@@ -1,8 +1,6 @@
 Secure eHealth Deployment Pipeline
 
-This repository implements a security-first CI/CD pipeline for a Python-based eHealth application. The pipeline is designed to protect sensitive patient data by enforcing security controls at build time and runtime using industry-standard DevSecOps tools.
-
-Every code push is automatically scanned, tested, and validated before being approved for deployment.
+This repository implements a security-first CI/CD pipeline for a Python-based eHealth application. The pipeline is designed to protect sensitive patient data by enforcing security controls at build time and runtime using industry-standard DevSecOps tools. Every code push is automatically scanned, tested, and validated before being approved for deployment.
 
 Application Overview
 
@@ -20,7 +18,8 @@ Response
 }
 
 
-Tech Stack
+Technologies used
+
 Language: Python 3.11
 Framework: Flask
 Containerization: Docker (Multi-stage, Distroless runtime)
@@ -30,16 +29,16 @@ DAST: OWASP ZAP
 Version Control: Git & GitHub
 
 
-Project Structure
+Project structure               and their contents
 .
-├── gracious_app.py        # Flask application with security headers
-├── gracy.txt              # Dependency pinning & security fixes
-├── Dockerfile             # Multi-stage hardened container build
+├── gracious_app.py        Flask application with security headers
+├── gracy.txt              Dependency pinning & security fixes
+├── Dockerfile             Multi-stage hardened container build
 ├── .github/workflows/
-│   └── pipeline.yml       # CI/CD security pipeline
+│   └── pipeline.yml       CI/CD security pipeline
 └── README.md
 
-Security Controls Implemented
+Security controls implemented
 Application-Level Hardening
 
 The Flask application enforces multiple HTTP security headers, including:
@@ -52,8 +51,7 @@ Permissions-Policy
 Cross-Origin-Opener-Policy
 Cross-Origin-Embedder-Policy
 Cache-Control
-Server version leakage is explicitly disabled to prevent fingerprinting.
-
+Server version leakage is explicitly disabled to prevent fingerprinting
 Dependency Security
 
 Dependencies are explicitly pinned in gracy.txt to prevent:
@@ -61,13 +59,10 @@ Dependencies are explicitly pinned in gracy.txt to prevent:
 Dependency confusion attacks
 
 Introduction of known vulnerable versions
-
-Additional packages are included to address Trivy-detected security issues.
+Additional packages are included to address Trivy-detected security issues
 
 Hardened Container Image
-
-The application uses a multi-stage Docker build:
-
+The application uses a multi-stage Docker build
 Builder Stage: Installs dependencies in an isolated environment
 
 Runtime Stage: Uses a Distroless Python image, removing shells and package managers
@@ -103,6 +98,7 @@ Security Report Upload
    ↓
 Deployment Approval
 
+
 Static Application Security Testing (SAST)
 
 Tool: Trivy
@@ -120,9 +116,7 @@ Tool: OWASP ZAP (Baseline Scan)
 Application is deployed in a temporary container
 
 ZAP performs automated security testing
-
-Findings are reported but do not block deployment (configurable)
-
+Findings are reported 
 
 Security reports are uploaded as pipeline artifacts:
 
@@ -130,9 +124,7 @@ HTML
 Markdown
 JSON
 
-How to Run Locally
-
-Prerequisites you need
+How to run locally and the prerequisites you need
 
 Python 3.11+
 Docker
@@ -148,8 +140,7 @@ python gracious_app.py
 
 Visit: http://localhost:5000
 
-You can build and run with Docker
-
+You can build and run with Docker:
 docker build -t ehealth-app .
 docker run -p 5000:5000 ehealth-app
 
@@ -168,4 +159,4 @@ Passes Trivy image vulnerability scans
 Successfully runs OWASP ZAP security tests is allowed to proceed toward deployment.
 
 
-This ensures a secure, reliable, and privacy-focused experience for e-patients and healthcare staff.
+In the end, this application, ensures a secure, reliable, and privacy-focused experience for e-patients and healthcare staff.
