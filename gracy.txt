@@ -1,7 +1,11 @@
 # To prevent dependency confusion and known bugs
-Flask==3.0.3
-Werkzeug==3.0.3
+Flask==3.1.0
+Werkzeug==3.1.0
+
+# Upgraded to a Production environment from a Dev. environment
+gunicorn==23.0.0
 
 # Security Fixes for Trivy
 jaraco.context>=6.1.0
 wheel>=0.46.2
+setuptools>=75.0.0

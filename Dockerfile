@@ -31,4 +31,5 @@ USER nonroot
 EXPOSE 5000
 
 ENTRYPOINT ["/usr/local/bin/python3"]
-CMD ["gracious_app.py"]
+# Instead of running the .py file directly, run it through gunicorn
+CMD ["-m", "gunicorn", "-b", "0.0.0.0:5000", "gracious_app:app"]
