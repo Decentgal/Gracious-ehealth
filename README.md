@@ -30,7 +30,7 @@ Response
 
 The tech stack I used are:
 
-- Programming language: Python 3.11
+- Programming language: Python 3.13.12
 - Framework: Flask
 - Containerization: Docker (Multi-stage, Distroless runtime)
 - CI/CD: GitHub Actions

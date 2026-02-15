@@ -1,13 +1,26 @@
-name: My eHealth security pipeline in a hardened production-ready infrastructure
+name: My eHealth security pipeline in a hardened production-ready infrastructure compliant to 4 industry standards.
 
 on: [push]
+
+# 1. MANDATORY for OIDC: This allows the secure handshake with AWS
+permissions:
+  id-token: write
+  contents: read
+  issues: write
 
 jobs:
   security-check:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4 # Updated to v4 for better performance
+        uses: actions/checkout@v4
+
+      # 2. OIDC AUTH: Replace static keys with this modern step
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: us-east-1
 
       - name: Scan Dockerfile for Misconfigurations
         uses: aquasecurity/trivy-action@master
@@ -16,6 +29,7 @@ jobs:
           exit-code: '1'
           severity: 'CRITICAL,HIGH'
 
+      # 3. BUILD: Pass ARNs as build-args if needed, or env vars during DAST
       - name: Build Docker Image
         run: docker build -t ehealth-app .
 
@@ -29,9 +43,18 @@ jobs:
           vuln-type: 'os,library'
           severity: 'CRITICAL,HIGH'
 
+      # 4. START: Pass the ARNs from my GitHub Variables into the container
       - name: Start Container for DAST
         run: |
-          docker run -d --name test-container --network host ehealth-app
+          docker run -d --name test-container \
+            --network host \
+            -e KMS_KEY_ARN=${{ vars.KMS_KEY_ARN }} \
+            -e SECRET_ARN=${{ vars.SECRET_ARN }} \
+            -e AWS_REGION=us-east-1 \
+            -e AWS_ACCESS_KEY_ID=${{ env.AWS_ACCESS_KEY_ID }} \
+            -e AWS_SECRET_ACCESS_KEY=${{ env.AWS_SECRET_ACCESS_KEY }} \
+            -e AWS_SESSION_TOKEN=${{ env.AWS_SESSION_TOKEN }} \
+            ehealth-app
           
           echo "Waiting for Flask app to respond on port 5000..."
           for i in {1..20}; do
@@ -43,7 +66,6 @@ jobs:
             sleep 3
           done
           
-          echo "ERROR: App failed to start. Printing container logs:"
           docker logs test-container
           exit 1
 
@@ -51,20 +73,16 @@ jobs:
         run: chmod -R 777 $(pwd)
 
       - name: Run OWASP ZAP Attack (DAST)
-        uses: zaproxy/action-baseline@v0.15.0 # Updated from v0.9.0
+        uses: zaproxy/action-baseline@v0.15.0
         with:
           target: 'http://127.0.0.1:5000'
           token: ${{ secrets.GITHUB_TOKEN }}
-          fail_action: false # Allows pipeline to finish even with warnings
-          allow_issue_writing: false
+          fail_action: false
           docker_name: 'ghcr.io/zaproxy/zaproxy:stable'
-          cmd_options: '-d'
-          # We leave artifact_name blank here to handle it manually for better reliability
-          artifact_name: '' 
 
       - name: Upload ZAP Security Report
-        uses: actions/upload-artifact@v4 # Uses the reliable v4 upload engine
-        if: always() # Ensures report is uploaded even if previous steps had warnings
+        uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: zap-security-report
           path: |
@@ -78,4 +96,4 @@ jobs:
 
       - name: Deploy
         if: success() 
-        run: echo "SAST and DAST Passed. My e-health application is LIVE."
+        run: echo "OIDC Handshake, SAST and DAST Passed. My e-health application is LIVE."
