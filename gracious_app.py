@@ -27,7 +27,7 @@ def apply_security_headers(response):
 
 @app.route('/')
 def hello():
-    return jsonify({"status": "Green", "security": "Hardened"})
+    return jsonify({"status": "Green", "security": "Welcome to Gracious e-Health Application"})
 
 if __name__ == "__main__":
     # ESSENTIAL: Must be 0.0.0.0 for Docker networking to work
