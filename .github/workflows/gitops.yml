@@ -2,12 +2,17 @@ name: "eHealth Benchmark Security Pipeline"
 
 on:
   push:
-    branches: [ "main", "feature/alb-waf-gitops" ]
+    branches: 
+      - main
+      - feature/alb-waf-gitops
+    paths:
+      - 'terraform/**'
+      - '.github/workflows/**'
 
 permissions:
-  id-token: write
-  contents: read
-  issues: write
+  id-token: write      # Required for OIDC handshake
+  contents: read       # Required for checking out code
+  issues: write        # Required for ZAP reports
 
 jobs:
   devsecops:
@@ -16,37 +21,52 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
+      # 1. IaC SCANNING (Checkov)
       - name: Run Checkov IaC Scan
         uses: bridgecrewio/checkov-action@master
         with:
           directory: terraform/
           framework: terraform
-          soft_fail: false
+          soft_fail: false 
 
+      # 2. AWS AUTHENTICATION
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: us-east-1
 
+      # 3. INFRASTRUCTURE DEPLOYMENT
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
 
       - name: Terraform Apply
-        run: cd terraform && terraform init && terraform apply -auto-approve
+        run: |
+          cd terraform
+          terraform init
+          terraform apply -auto-approve
 
+      # 4. CONTAINER SECURITY (Trivy)
       - name: Build and Scan Docker Image
         run: |
           docker build -t ehealth-app .
-          # Trivy Scan
+          # Scan Dockerfile misconfigs
+          docker run --rm aquasecurity/trivy config .
+          # Scan Image for vulnerabilities
           docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
-            aquasec/trivy image --exit-code 1 --severity CRITICAL,HIGH ehealth-app
+            aquasecurity/trivy image --exit-code 1 --severity CRITICAL,HIGH ehealth-app
 
+      # 5. PERMISSION ENFORCEMENT (The "Fix")
       - name: Fix Workspace Permissions
         if: always()
         run: |
+          echo "Reclaiming workspace from root-owned scanner outputs..."
           sudo chown -R $USER:$USER $(pwd)
           sudo chmod -R 777 $(pwd)
+
+      # 6. DYNAMIC ANALYSIS (OWASP ZAP)
+      - name: Start Container for DAST
+        run: docker run -d --name test-container -p 5000:5000 ehealth-app
 
       - name: Run OWASP ZAP (DAST)
         uses: zaproxy/action-baseline@v0.15.0
@@ -54,3 +74,7 @@ jobs:
           target: 'http://127.0.0.1:5000'
           token: ${{ secrets.GITHUB_TOKEN }}
           fail_action: false
+
+      - name: Stop Container
+        if: always()
+        run: docker rm -f test-container
