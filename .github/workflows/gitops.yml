@@ -37,5 +37,8 @@ jobs:
 
 # Fixing ZAP Workspace Permissions
       - name: Fix Workspace Permissions
-        if: always() # Run even if terraform steps fail
-        run: sudo chmod -R 777 $(pwd)
+        if: always()
+        run: |
+          echo "Current user: $(whoami)"
+          sudo chown -R $USER:$USER $(pwd)
+          sudo chmod -R 777 $(pwd)
