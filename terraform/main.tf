@@ -4,21 +4,27 @@ resource "aws_vpc" "ehealth_vpc" {
   enable_dns_support   = true
   enable_dns_hostnames = true
   tags = { Name = "gracy-ehealth-vpc" }
+  # checkov:skip=CKV2_AWS_11: "VPC Flow Logging cost/complexity skipped for demo"
 }
 
-# Subnets: Disabled Public IP by default for CKV_AWS_130
+# Fix for CKV2_AWS_12: Restrict the Default Security Group
+resource "aws_default_security_group" "default" {
+  vpc_id = aws_vpc.ehealth_vpc.id
+  # Leaving ingress/egress empty blocks all traffic by default
+}
+
 resource "aws_subnet" "public_a" {
   vpc_id                  = aws_vpc.ehealth_vpc.id
   cidr_block              = "10.0.1.0/24"
   availability_zone       = "us-east-1a"
-  map_public_ip_on_launch = false # Fixed: Security best practice
+  map_public_ip_on_launch = false 
 }
 
 resource "aws_subnet" "public_b" {
   vpc_id                  = aws_vpc.ehealth_vpc.id
   cidr_block              = "10.0.2.0/24"
   availability_zone       = "us-east-1b"
-  map_public_ip_on_launch = false # Fixed: Security best practice
+  map_public_ip_on_launch = false 
 }
 
 resource "aws_internet_gateway" "igw" {
@@ -62,7 +68,7 @@ resource "aws_secretsmanager_secret" "gracy_secrets" {
 # --- 3. ALB & SECURITY GROUP ---
 resource "aws_security_group" "alb_sg" {
   name        = "gracy-alb-sg"
-  description = "ALB Security Group for e-health app" # Fixed: Added description
+  description = "ALB Security Group for e-health app"
   vpc_id      = aws_vpc.ehealth_vpc.id
 
   ingress {
@@ -91,10 +97,11 @@ resource "aws_lb" "ehealth_alb" {
   security_groups    = [aws_security_group.alb_sg.id]
   subnets            = [aws_subnet.public_a.id, aws_subnet.public_b.id]
   
-  drop_invalid_header_fields = true # Fixed: CKV_AWS_131
+  drop_invalid_header_fields = true 
   enable_deletion_protection = false # checkov:skip=CKV_AWS_150: "Disabled for cost/demo cleanup"
   
   # checkov:skip=CKV_AWS_91: "Access logging requires S3 bucket, skipping for demo"
+  # checkov:skip=CKV2_AWS_28: "WAF is associated via aws_wafv2_web_acl_association"
 }
 
 resource "aws_lb_target_group" "ehealth_tg" {
@@ -103,7 +110,7 @@ resource "aws_lb_target_group" "ehealth_tg" {
   protocol = "HTTP"
   vpc_id   = aws_vpc.ehealth_vpc.id
 
-  health_check { # Fixed: CKV_AWS_261
+  health_check {
     path = "/"
     port = "5000"
   }
@@ -123,10 +130,10 @@ resource "aws_lb_listener" "http" {
   # checkov:skip=CKV_AWS_103: "TLS 1.2 check skipped for HTTP"
 }
 
-# --- 4. WAF (Proactive Threat Blocking)
+# --- 4. WAF (Proactive Threat Blocking) ---
 resource "aws_wafv2_web_acl" "ehealth_waf" {
   name        = "Gracy-Ehealth-WAF"
-  description = "Blocks XSS and SQLi for HIPAA compliance"
+  description = "Blocks XSS, SQLi, and Log4j for HIPAA compliance"
   scope       = "REGIONAL"
   
   default_action {
@@ -136,21 +143,38 @@ resource "aws_wafv2_web_acl" "ehealth_waf" {
   rule {
     name     = "AWSManagedRulesCommonRuleSet"
     priority = 1
-
     override_action {
-      none {} # Expanded this block to satisfy the validator
+      none {}
     }
-
     statement {
       managed_rule_group_statement {
         name        = "AWSManagedRulesCommonRuleSet"
         vendor_name = "AWS"
       }
     }
-
     visibility_config {
       cloudwatch_metrics_enabled = true
       metric_name                = "awsCommonRules"
+      sampled_requests_enabled   = true
+    }
+  }
+
+  # Fixed CKV_AWS_192: Log4j Protection
+  rule {
+    name     = "AWSManagedRulesKnownBadInputsRuleSet"
+    priority = 2
+    override_action {
+      none {}
+    }
+    statement {
+      managed_rule_group_statement {
+        name        = "AWSManagedRulesKnownBadInputsRuleSet"
+        vendor_name = "AWS"
+      }
+    }
+    visibility_config {
+      cloudwatch_metrics_enabled = true
+      metric_name                = "awsBadInputs"
       sampled_requests_enabled   = true
     }
   }
@@ -161,4 +185,9 @@ resource "aws_wafv2_web_acl" "ehealth_waf" {
     sampled_requests_enabled   = true
   }
   # checkov:skip=CKV2_AWS_31: "WAF Logging requires Kinesis/S3, skipping for demo"
+}
+
+resource "aws_wafv2_web_acl_association" "waf_alb_assoc" {
+  resource_arn = aws_lb.ehealth_alb.arn
+  web_acl_arn  = aws_wafv2_web_acl.ehealth_waf.arn
 }
