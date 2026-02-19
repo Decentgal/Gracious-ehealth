@@ -73,7 +73,7 @@ resource "aws_secretsmanager_secret" "gracy_db_secret" {
   kms_key_id = aws_kms_key.gracy_key.arn
 }
 
-# --- 3. S3 LOGGING INFRASTRUCTURE ---
+# --- 3. S3 LOGGING (Hardened for Production) ---
 resource "random_id" "bucket_suffix" {
   byte_length = 4
 }
@@ -81,22 +81,22 @@ resource "random_id" "bucket_suffix" {
 resource "aws_s3_bucket" "log_bucket" {
   bucket        = "gracy-ehealth-logs-${random_id.bucket_suffix.hex}"
   force_destroy = true
-  
-  # checkov:skip=CKV_AWS_18: "Logging bucket does not require self-logging"
-  # checkov:skip=CKV_AWS_144: "Cross-region replication not required for demo"
-  # checkov:skip=CKV_AWS_145: "SSE-S3 encryption is handled via server_side_encryption resource"
-  # checkov:skip=CKV_AWS_19: "Encryption handled via server_side_encryption resource"
-  # checkov:skip=CKV_AWS_21: "Versioning handled via bucket_versioning resource"
-  # checkov:skip=CKV_AWS_53: "Public access blocked via aws_s3_bucket_public_access_block"
-  # checkov:skip=CKV_AWS_54: "Public access blocked via aws_s3_bucket_public_access_block"
-  # checkov:skip=CKV_AWS_55: "Public access blocked via aws_s3_bucket_public_access_block"
-  # checkov:skip=CKV_AWS_56: "Public access blocked via aws_s3_bucket_public_access_block"
-  # checkov:skip=CKV2_AWS_6: "Public access blocked via aws_s3_bucket_public_access_block"
 }
 
 resource "aws_s3_bucket_versioning" "log_versioning" {
   bucket = aws_s3_bucket.log_bucket.id
   versioning_configuration { status = "Enabled" }
+}
+
+resource "aws_s3_bucket_server_side_encryption_configuration" "log_enc" {
+  bucket = aws_s3_bucket.log_bucket.id
+  rule {
+    apply_server_side_encryption_by_default {
+      # Resolves AWS-0132
+      kms_master_key_id = aws_kms_key.gracy_key.arn
+      sse_algorithm     = "aws:kms"
+    }
+  }
 }
 
 resource "aws_s3_bucket_lifecycle_configuration" "log_lifecycle" {
@@ -122,7 +122,6 @@ resource "aws_s3_bucket_public_access_block" "log_bucket_block" {
 
 resource "aws_s3_bucket_policy" "allow_log_delivery" {
   bucket = aws_s3_bucket.log_bucket.id
-  # checkov:skip=CKV_AWS_70: "Principal is restricted to AWS Log Delivery service"
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
@@ -136,7 +135,7 @@ resource "aws_s3_bucket_policy" "allow_log_delivery" {
   })
 }
 
-# --- 4. S3 EVENT NOTIFICATION ---
+# --- 4. S3 EVENT TRIGGER ---
 resource "aws_lambda_permission" "allow_bucket" {
   statement_id  = "AllowExecutionFromS3Bucket"
   action        = "lambda:InvokeFunction"
@@ -155,7 +154,7 @@ resource "aws_s3_bucket_notification" "bucket_notification" {
   depends_on = [aws_lambda_permission.allow_bucket]
 }
 
-# --- 5. ALB & SECURITY GROUP ---
+# --- 5. ALB & SECURITY GROUP (Hardened for Production) ---
 resource "aws_security_group" "alb_sg" {
   name        = "gracy-alb-sg"
   vpc_id      = aws_vpc.ehealth_vpc.id
@@ -168,29 +167,30 @@ resource "aws_security_group" "alb_sg" {
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
+
   egress {
-    description = "Allow HTTPS outbound"
+    description = "Restricted Egress to Internal VPC"
     from_port   = 443
     to_port     = 443
     protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
+    # Resolves AWS-0104: Restricting egress to VPC CIDR
+    cidr_blocks = ["10.0.0.0/16"] 
   }
-  # checkov:skip=CKV_AWS_260: "Port 80 allowed for demo"
-  # checkov:skip=CKV_AWS_382: "Egress restricted to HTTPS"
 }
+
+
 
 resource "aws_lb" "ehealth_alb" {
   name               = "gracy-ehealth-alb"
-  internal           = false
+  internal           = false 
   load_balancer_type = "application"
   security_groups    = [aws_security_group.alb_sg.id]
   subnets            = [aws_subnet.public_a.id, aws_subnet.public_b.id]
   
-  # checkov:skip=CKV_AWS_131: "Dropped headers handled by WAF"
-  # checkov:skip=CKV_AWS_150: "Disabled for demo"
-  # checkov:skip=CKV2_AWS_28: "WAF associated separately"
-  # checkov:skip=CKV2_AWS_20: "Redirect requires SSL"
-  # checkov:skip=CKV2_AWS_76: "Log4j protection verified in WAF"
+  # Resolves AWS-0052
+  drop_invalid_header_fields = true 
+  # High Availability production requirement
+  enable_deletion_protection = true 
 
   access_logs {
     bucket  = aws_s3_bucket.log_bucket.id
@@ -204,36 +204,34 @@ resource "aws_lb_target_group" "ehealth_tg" {
   port     = 5000
   protocol = "HTTP"
   vpc_id   = aws_vpc.ehealth_vpc.id
-  # checkov:skip=CKV_AWS_378: "HTTP used for target group"
-  # checkov:skip=CKV_AWS_261: "Healthcheck defined in ECS service deployment"
+  
+  health_check {
+    enabled             = true
+    path                = "/"
+    port                = "traffic-port"
+    protocol            = "HTTP"
+    healthy_threshold   = 3
+    unhealthy_threshold = 3
+  }
 }
 
 resource "aws_lb_listener" "http" {
   load_balancer_arn = aws_lb.ehealth_alb.arn
   port              = "80"
   protocol          = "HTTP"
-  # checkov:skip=CKV_AWS_2: "HTTP used due to lack of SSL Cert"
-  # checkov:skip=CKV_AWS_103: "TLS 1.2 skipped for HTTP"
 
+  # Resolves AWS-0054: Forces redirection to secure protocol
   default_action {
-    type             = "forward"
-    target_group_arn = aws_lb_target_group.ehealth_tg.arn
+    type = "redirect"
+    redirect {
+      port        = "443"
+      protocol    = "HTTPS"
+      status_code = "HTTP_301"
+    }
   }
 }
 
-# --- 6. LAMBDA ROTATOR ---
-resource "aws_iam_role" "lambda_rotator_role" {
-  name = "Gracy-Secret-Rotator-Role"
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Action = "sts:AssumeRole"
-      Effect = "Allow"
-      Principal = { Service = "lambda.amazonaws.com" }
-    }]
-  })
-}
-
+# --- 6. LAMBDA & SQS ---
 resource "aws_sqs_queue" "lambda_dlq" {
   name              = "gracy-lambda-dlq"
   kms_master_key_id = aws_kms_key.gracy_key.id
@@ -248,8 +246,18 @@ resource "aws_lambda_function" "rotator" {
   reserved_concurrent_executions = 2
   tracing_config { mode = "Active" }
   dead_letter_config { target_arn = aws_sqs_queue.lambda_dlq.arn }
-  # checkov:skip=CKV_AWS_117: "VPC config skipped"
-  # checkov:skip=CKV_AWS_272: "Code signing skipped"
+}
+
+resource "aws_iam_role" "lambda_rotator_role" {
+  name = "Gracy-Secret-Rotator-Role"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action = "sts:AssumeRole"
+      Effect = "Allow"
+      Principal = { Service = "lambda.amazonaws.com" }
+    }]
+  })
 }
 
 resource "aws_secretsmanager_secret_rotation" "rotation" {
@@ -258,10 +266,10 @@ resource "aws_secretsmanager_secret_rotation" "rotation" {
   rotation_rules { automatically_after_days = 30 }
 }
 
-# --- 7. WAF ---
+# --- 7. WEB APPLICATION FIREWALL (WAF) ---
 resource "aws_wafv2_web_acl" "ehealth_waf" {
   name        = "Gracy-Ehealth-WAF"
-  description = "Blocks XSS, SQLi, and Log4j"
+  description = "Production WAF for healthcare app"
   scope       = "REGIONAL"
   
   default_action { 
@@ -277,41 +285,24 @@ resource "aws_wafv2_web_acl" "ehealth_waf" {
   rule {
     name     = "AWSManagedRulesCommonRuleSet"
     priority = 1
+    
     override_action { 
       none {} 
     }
+
     statement {
       managed_rule_group_statement {
         name        = "AWSManagedRulesCommonRuleSet"
         vendor_name = "AWS"
       }
     }
+
     visibility_config {
       cloudwatch_metrics_enabled = true
       metric_name                = "awsCommonRules"
       sampled_requests_enabled   = true
     }
   }
-
-  rule {
-    name     = "AWSManagedRulesKnownBadInputsRuleSet"
-    priority = 2
-    override_action { 
-      none {} 
-    }
-    statement {
-      managed_rule_group_statement {
-        name        = "AWSManagedRulesKnownBadInputsRuleSet"
-        vendor_name = "AWS"
-      }
-    }
-    visibility_config {
-      cloudwatch_metrics_enabled = true
-      metric_name                = "awsBadInputs"
-      sampled_requests_enabled   = true
-    }
-  }
-  # checkov:skip=CKV2_AWS_31: "WAF Logging skipped"
 }
 
 resource "aws_wafv2_web_acl_association" "waf_alb_assoc" {
