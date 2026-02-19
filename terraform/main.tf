@@ -84,8 +84,8 @@ resource "aws_s3_bucket" "log_bucket" {
   
   # checkov:skip=CKV_AWS_18: "Logging bucket does not require self-logging"
   # checkov:skip=CKV_AWS_144: "Cross-region replication not required for demo"
-  # checkov:skip=CKV_AWS_145: "SSE-S3 encryption is sufficient for logs"
-  # checkov:skip=CKV_AWS_19: "Encryption handled via server_side_encryption_configuration"
+  # checkov:skip=CKV_AWS_145: "SSE-S3 encryption is handled via server_side_encryption resource"
+  # checkov:skip=CKV_AWS_19: "Encryption handled via server_side_encryption resource"
   # checkov:skip=CKV_AWS_21: "Versioning handled via bucket_versioning resource"
   # checkov:skip=CKV_AWS_53: "Public access blocked via aws_s3_bucket_public_access_block"
   # checkov:skip=CKV_AWS_54: "Public access blocked via aws_s3_bucket_public_access_block"
@@ -101,18 +101,11 @@ resource "aws_s3_bucket_versioning" "log_versioning" {
 
 resource "aws_s3_bucket_lifecycle_configuration" "log_lifecycle" {
   bucket = aws_s3_bucket.log_bucket.id
-
   rule {
     id     = "log_retention"
     status = "Enabled"
-
-    filter {} # Keeps the warning away
-
-    expiration {
-      days = 90
-    }
-
-    # This must be a nested block, not a direct argument
+    filter {}
+    expiration { days = 90 }
     abort_incomplete_multipart_upload {
       days_after_initiation = 7
     }
@@ -143,7 +136,7 @@ resource "aws_s3_bucket_policy" "allow_log_delivery" {
   })
 }
 
-# --- 4. S3 EVENT NOTIFICATION (The Trigger) ---
+# --- 4. S3 EVENT NOTIFICATION ---
 resource "aws_lambda_permission" "allow_bucket" {
   statement_id  = "AllowExecutionFromS3Bucket"
   action        = "lambda:InvokeFunction"
@@ -161,8 +154,6 @@ resource "aws_s3_bucket_notification" "bucket_notification" {
   }
   depends_on = [aws_lambda_permission.allow_bucket]
 }
-
-
 
 # --- 5. ALB & SECURITY GROUP ---
 resource "aws_security_group" "alb_sg" {
@@ -263,8 +254,7 @@ resource "aws_secretsmanager_secret_rotation" "rotation" {
   rotation_rules { automatically_after_days = 30 }
 }
 
-# --- 7. WEB APPLICATION FIREWALL (WAF) ---
-# checkov:skip=CKV_AWS_192: "Log4j protection via AWSManagedRulesKnownBadInputsRuleSet"
+# --- 7. WAF ---
 resource "aws_wafv2_web_acl" "ehealth_waf" {
   name        = "Gracy-Ehealth-WAF"
   description = "Blocks XSS, SQLi, and Log4j"
@@ -318,4 +308,9 @@ resource "aws_wafv2_web_acl" "ehealth_waf" {
     }
   }
   # checkov:skip=CKV2_AWS_31: "WAF Logging skipped"
+}
+
+resource "aws_wafv2_web_acl_association" "waf_alb_assoc" {
+  resource_arn = aws_lb.ehealth_alb.arn
+  web_acl_arn  = aws_wafv2_web_acl.ehealth_waf.arn
 }
