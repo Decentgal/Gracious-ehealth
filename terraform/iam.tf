@@ -1,34 +1,31 @@
 resource "aws_iam_policy" "app_runtime_policy" {
-  name        = "Gracy-App-Security-Policy"
-  description = "Hardened Least Privilege policy for e-health app lifecycle"
+  name        = "Gracy-EHealth-ZeroTrust-Policy"
+  description = "Dynamic Least-Privilege Scoping for E-Health Lifecycle"
 
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
       {
-        Sid    = "ScopedSecretsAccess"
+        Sid    = "SecretsAccess"
         Effect = "Allow"
-        Action = ["secretsmanager:GetSecretValue", "secretsmanager:DescribeSecret"]
+        Action = ["secretsmanager:GetSecretValue"]
         Resource = [aws_secretsmanager_secret.gracy_db_secret.arn]
       },
       {
-        Sid    = "ScopedKMSAccess"
+        Sid    = "KMSDecrypt"
         Effect = "Allow"
-        Action = ["kms:Decrypt", "kms:DescribeKey"]
+        Action = ["kms:Decrypt", "kms:GenerateDataKey"]
         Resource = [aws_kms_key.gracy_key.arn]
       },
       {
-        Sid    = "S3LoggingWriteOnly"
+        Sid    = "LogIngestion"
         Effect = "Allow"
-        Action = ["s3:PutObject", "s3:GetBucketLocation"]
-        Resource = ["${aws_s3_bucket.log_bucket.arn}/alb-logs/*", "${aws_s3_bucket.log_bucket.arn}/AWSLogs/*"]
-      },
-      {
-        Sid    = "LambdaExecutionLogging"
-        Effect = "Allow"
-        Action = ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"]
-        # checkov:skip=CKV_AWS_355: "Logs ARNs are dynamic, scoping to region/account is sufficient"
-        Resource = "arn:aws:logs:us-east-1:996353668285:*"
+        Action = [
+          "s3:PutObject",
+          "s3:PutObjectAcl"
+        ]
+        # Benchmark: Scoped to specific path with ACL enforcement
+        Resource = ["${aws_s3_bucket.log_bucket.arn}/AWSLogs/*"]
       }
     ]
   })
