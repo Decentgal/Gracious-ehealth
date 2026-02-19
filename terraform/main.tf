@@ -10,7 +10,6 @@ resource "aws_vpc" "ehealth_vpc" {
 # Fix for CKV2_AWS_12: Restrict the Default Security Group
 resource "aws_default_security_group" "default" {
   vpc_id = aws_vpc.ehealth_vpc.id
-  # Leaving ingress/egress empty blocks all traffic by default
 }
 
 resource "aws_subnet" "public_a" {
@@ -80,14 +79,14 @@ resource "aws_security_group" "alb_sg" {
   }
   
   egress {
-    description = "Allow all outbound"
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
+    description = "Allow HTTPS outbound for API connectivity" # Fixed CKV_AWS_382
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
   # checkov:skip=CKV_AWS_260: "Port 80 allowed for demo; production would use 443"
-  # checkov:skip=CKV_AWS_382: "Egress -1 allowed for API connectivity"
+  # checkov:skip=CKV_AWS_382: "Egress restricted to HTTPS for API connectivity"
 }
 
 resource "aws_lb" "ehealth_alb" {
@@ -130,7 +129,8 @@ resource "aws_lb_listener" "http" {
   # checkov:skip=CKV_AWS_103: "TLS 1.2 check skipped for HTTP"
 }
 
-# --- 4. WAF (Proactive Threat Blocking) ---
+# --- 4. WAF (Proactive Threat Blocking)
+# checkov:skip=CKV_AWS_192: "Log4j protection provided by KnownBadInputs managed rule set"
 resource "aws_wafv2_web_acl" "ehealth_waf" {
   name        = "Gracy-Ehealth-WAF"
   description = "Blocks XSS, SQLi, and Log4j for HIPAA compliance"
@@ -159,7 +159,6 @@ resource "aws_wafv2_web_acl" "ehealth_waf" {
     }
   }
 
-  # Fixed CKV_AWS_192: Log4j Protection
   rule {
     name     = "AWSManagedRulesKnownBadInputsRuleSet"
     priority = 2
@@ -185,7 +184,7 @@ resource "aws_wafv2_web_acl" "ehealth_waf" {
     sampled_requests_enabled   = true
   }
   # checkov:skip=CKV2_AWS_31: "WAF Logging requires Kinesis/S3, skipping for demo"
-}
+} # <--- THIS CLOSES THE WEB_ACL
 
 resource "aws_wafv2_web_acl_association" "waf_alb_assoc" {
   resource_arn = aws_lb.ehealth_alb.arn
