@@ -31,9 +31,9 @@ resource "aws_iam_role" "github_oidc_role" {
 }
 
 # Attach Permissions
-resource "aws_iam_role_policy_attachment" "admin_attach" {
+resource "aws_iam_role_policy_attachment" "oidc_attach" {
   role       = aws_iam_role.github_oidc_role.name
-  policy_arn = "arn:aws:iam::aws:policy/AdministratorAccess"
+  policy_arn = aws_iam_policy.app_runtime_policy.arn
 }
 
 output "oidc_role_arn" {
