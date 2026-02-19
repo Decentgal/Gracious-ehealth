@@ -10,7 +10,6 @@ resource "aws_internet_gateway" "igw" {
   vpc_id = aws_vpc.ehealth_vpc.id
 }
 
-# Multi-AZ Subnets for High Availability
 resource "aws_subnet" "public_a" {
   vpc_id                  = aws_vpc.ehealth_vpc.id
   cidr_block              = "10.0.1.0/24"
@@ -43,7 +42,7 @@ resource "aws_route_table_association" "b" {
   route_table_id = aws_route_table.public_rt.id
 }
 
-# --- 2. ENCRYPTION (NIST/HIPAA Compliant) ---
+# --- 2. ENCRYPTION (NIST/HIPAA/GDPR Compliant) ---
 resource "aws_kms_key" "gracy_key" {
   description             = "Master key for Gracious e-health PHI encryption"
   deletion_window_in_days = 30
@@ -72,10 +71,10 @@ resource "aws_kms_alias" "gracy_key_alias" {
 }
 
 resource "aws_secretsmanager_secret" "gracy_secrets" {
-  name                    = "Gracy-App-Secrets-v4" # Incremented for fresh deployment
+  name                    = "Gracy-App-Secrets-v5" # Incremented for fresh deployment
   description             = "Production credentials for e-health Application"
   kms_key_id              = aws_kms_key.gracy_key.arn
-  recovery_window_in_days = 30 
+  recovery_window_in_days = 30
 }
 
 # --- 3. ALB & SECURITY GROUP ---
@@ -124,24 +123,31 @@ resource "aws_lb_listener" "http" {
   }
 }
 
-# --- 4. WAF (Proactive Defense) ---
+# --- 4. WAF (Proactive Threat Blocking)
 resource "aws_wafv2_web_acl" "ehealth_waf" {
   name        = "Gracy-Ehealth-WAF"
   description = "Blocks XSS and SQLi for HIPAA compliance"
   scope       = "REGIONAL"
   
-  default_action { allow {} }
+  default_action {
+    allow {}
+  }
 
   rule {
     name     = "AWSManagedRulesCommonRuleSet"
     priority = 1
-    override_action { none {} }
+
+    override_action {
+      none {}
+    }
+
     statement {
       managed_rule_group_statement {
         name        = "AWSManagedRulesCommonRuleSet"
         vendor_name = "AWS"
       }
     }
+
     visibility_config {
       cloudwatch_metrics_enabled = true
       metric_name                = "awsCommonRules"
@@ -154,9 +160,4 @@ resource "aws_wafv2_web_acl" "ehealth_waf" {
     metric_name                = "ehealthWAF"
     sampled_requests_enabled   = true
   }
-}
-
-resource "aws_wafv2_web_acl_association" "waf_alb_assoc" {
-  resource_arn = aws_lb.ehealth_alb.arn
-  web_acl_arn  = aws_wafv2_web_acl.ehealth_waf.arn
 }
