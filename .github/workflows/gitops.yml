@@ -1,47 +1,56 @@
-name: "Infrastructure GitOps"
+name: "eHealth Benchmark Security Pipeline"
 
 on:
   push:
-    branches: 
-      - main
-      - feature/alb-waf-gitops
-    paths:
-      - 'terraform/**'
-      - '.github/workflows/**'
+    branches: [ "main", "feature/alb-waf-gitops" ]
 
 permissions:
-  id-token: write      # Required for OIDC handshake
-  contents: read       # Required to checkout the repo
+  id-token: write
+  contents: read
+  issues: write
 
 jobs:
-  terraform:
+  devsecops:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
 
+      - name: Run Checkov IaC Scan
+        uses: bridgecrewio/checkov-action@master
+        with:
+          directory: terraform/
+          framework: terraform
+          soft_fail: false
+
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }} # The OIDC role
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: us-east-1
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
 
-      - name: Terraform Init
-        run: cd terraform && terraform init
-
-      - name: Terraform Plan
-        run: cd terraform && terraform plan
-
       - name: Terraform Apply
-        run: cd terraform && terraform apply -auto-approve
+        run: cd terraform && terraform init && terraform apply -auto-approve
 
-# Fixing ZAP Workspace Permissions
+      - name: Build and Scan Docker Image
+        run: |
+          docker build -t ehealth-app .
+          # Trivy Scan
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+            aquasec/trivy image --exit-code 1 --severity CRITICAL,HIGH ehealth-app
+
       - name: Fix Workspace Permissions
         if: always()
         run: |
-          echo "Current user: $(whoami)"
           sudo chown -R $USER:$USER $(pwd)
           sudo chmod -R 777 $(pwd)
+
+      - name: Run OWASP ZAP (DAST)
+        uses: zaproxy/action-baseline@v0.15.0
+        with:
+          target: 'http://127.0.0.1:5000'
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fail_action: false
