@@ -22,25 +22,48 @@ Response
 
 
 
-**Technologies used**
+**TECHNOLOGY STACKS USED**
 
+(a). **The core Application** 
 - Infrastructure-as-Code: Terraform
 - Cloud Provider: AWS (us-east-1)
-- Infrastructure provisioned using Terraform: KMS, Secrets Manager, IAM OIDC Provider, VPC, ALB, WAF, CloudWatch.
-- Identity: OpenID Connect (OIDC) for GitHub Actions (Zero-Key Architecture).
+- Linux (Ubuntu for Runners, Python-slim for Docker)
+- Infrastructure provisioned: KMS, Secrets Manager, IAM OIDC Provider, VPC, ALB, WAF, Lambda Function, CloudWatch.
+- Identity: OpenID Connect (OIDC)
+- Web Server: Gunicorn (used for production-grade serving of the Flask app).
+- Cloud SDK: Boto3 (the AWS SDK for Python used to securely fetch database secrets and KMS keys).
 - Data Security: Encryption was enforced using AWS KMS and secret rotation using Secrets Manager
 - Language: Python 3.13.12
 - Framework: Flask
-- Containerization: Docker (Multi-stage, Distroless runtime)
-- CI/CD: GitHub Actions & GitOps
-- IaC Scanning: Checkov
-- SAST & Image Scanning: Trivy
-- DAST: OWASP ZAP
+
+
+(b). **Cloud Infrastructure**
+- Compute: AWS Lambda (for secret rotation) and EC2 Instance (for running the app)
+- Networking: Amazon VPC, with public/private subnets, Internet Gateway, and Route Tables.
+- Load Balancing: Application Load Balancer (ALB), handling traffic distribution and SSL/TLS.
+- Database Security: AWS Secrets Manager, used to store and rotate sensitive database credentials
+- Encryption: AWS KMS (Key Management Service), providing the master keys for encrypting PHI (Protected Health Information) data at rest.
+
+
+(c). **Security**
+- WAF: AWS WAFv2, protected your app against SQL injection and XSS attacks using Managed Rule Sets.
+- Logging: VPC Flow Logs (for network traffic) and S3 Access Logs (for ALB traffic audit).
+- Identity: OIDC (OpenID Connect), used for the secure, passwordless handshake between GitHub Actions and AWS.
+
+
+(d). **DevSecOps & GitOps Pipeline**
+- Infrastructure as Code (IaC): Terraform (defined every AWS resource as code for consistency)
+- CI/CD Platform: GitHub Actions (the workflow automating the entire build-test-deploy/SDLC lifecycle)
+- Containerization: Docker (packaged the app into a portable, secure image using a multi-stage, Distroless runtime)
+- Scanner I: Checkov (The IaC scanner to check for any misconfigurations in the Terraform codes e.g., S3 buckets)
+- Scanner II: Trivy (Performed SAST/Static Analysis on the Dockerfiles and container images).
+- Scanner III: OWASP ZAP (Performed DAST/Dynamic Analysis to find vulnerabilities in the running web app)
 - Version Control: Git & GitHub
 
 
-**Industry compliance**
-- **HIPAA:** I ensured Protected Health Information (PHI) is encrypted at rest and in transit using KMS and Secrets Manager.
+**INDUSTRY COMPLIANCE**
+
+- **HIPAA:** I ensured PHI is encrypted at rest and in transit using KMS and Secrets Manager.
 - **ISO 27001:** Adheres to Access Control (A.9) and Cryptographic Controls (A.10).
 - **NIST 800-207:** I implemented Zero-Trust principles by assuming roles using OIDC rather than using keys.
 - **OWASP Top 10:** I integrated OWASP ZAP to scan for runtime vulnerabilities (XSS, SQLi).
@@ -49,9 +72,11 @@ Response
 
 
 **Local setup & testing**
+
 1. Clone this repo: `git clone https://github.com/Decentgal/Gracious-ehealth.git`
 2. Initialize Terraform: `terraform init`
-3. Build & run: `docker build -t ehealth-app .`
+3. Build: `docker build -t ehealth-app`
+4. Run: `docker run -d --name ehealth-test -p 8080:5000 ehealth-app`
 
 
 **Project structure               and their contents**
@@ -192,11 +217,17 @@ trivy image ehealth-app
 
 
 
-10. **Security Outcome:** Only code that:
+10. **Security Outcome:** Only code that successfully:
 
-- Passes Trivy configuration scans
+- Passes Checkov configuration scans
 - Passes Trivy image vulnerability scans
 - Successfully runs OWASP ZAP security tests is allowed to proceed toward deployment.
 
 
-**In the end, this application ensures a reproducible, secure, reliable, and privacy-focused experience for everyday users, patients, and healthcare staff.*
+This application is 100% reproducible by anyone. It is hosted on AWS within a hardened VPC featuring public/private subnets, an Application Load Balancer (ALB), and a WAFv2 protected by AWS Managed Rule Sets to block SQLi and XSS attacks. Security is integrated at every stage of the CI/CD lifecycle: Checkov scans the IaC for misconfigurations, Trivy performs SAST on Docker images, and OWASP ZAP executes DAST on the running container.
+
+
+To enforce Zero Trust, I implemented passwordless OIDC authentication between GitHub and AWS, utilized AWS KMS for data encryption, and configured Secrets Manager with automated rotation via Lambda. The final result is a production-ready, compliant infrastructure.
+
+
+**In the end, this pipeline ensures a secure, reliable, and privacy-focused experience for every user, patients, and healthcare system.*
