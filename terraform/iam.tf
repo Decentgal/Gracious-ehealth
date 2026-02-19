@@ -1,47 +1,42 @@
-# Gracy-App-Security-Policy
 resource "aws_iam_policy" "app_runtime_policy" {
   name        = "Gracy-App-Security-Policy"
-  description = "Least Privilege policy for e-health app and lifecycle management (S3 logging and Lambda function)"
+  description = "Hardened Least Privilege policy for e-health app"
 
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
       {
-        Sid    = "SecretsAndKMSAccess"
+        Sid    = "ScopedSecretsAccess"
         Effect = "Allow"
         Action = [
           "secretsmanager:GetSecretValue",
-          "secretsmanager:PutSecretValue",
-          "kms:Decrypt",
-          "kms:GenerateDataKey",
-          "kms:DescribeKey"
+          "secretsmanager:DescribeSecret"
         ]
-        Resource = "*" 
+        # Fixed CKV_AWS_355 & 288: Restricted to specific secret
+        Resource = [aws_secretsmanager_secret.gracy_db_secret.arn]
       },
       {
-        Sid    = "S3LoggingAccess"
+        Sid    = "ScopedKMSAccess"
+        Effect = "Allow"
+        Action = [
+          "kms:Decrypt",
+          "kms:DescribeKey"
+        ]
+        # Fixed CKV_AWS_355 & 288: Restricted to specific key
+        Resource = [aws_kms_key.gracy_key.arn]
+      },
+      {
+        Sid    = "S3LoggingWriteOnly"
         Effect = "Allow"
         Action = [
           "s3:PutObject",
-          "s3:GetBucketLocation",
-          "s3:ListBucket"
+          "s3:GetBucketLocation"
         ]
+        # Fixed CKV_AWS_290: Constrained write access to the log path
         Resource = [
-          "arn:aws:s3:::gracy-ehealth-logs-*",
-          "arn:aws:s3:::gracy-ehealth-logs-*/*"
+          "${aws_s3_bucket.log_bucket.arn}/alb-logs/*",
+          "${aws_s3_bucket.log_bucket.arn}/AWSLogs/*"
         ]
-      },
-      {
-        Sid    = "LambdaManagement"
-        Effect = "Allow"
-        Action = [
-          "lambda:UpdateFunctionCode",
-          "lambda:UpdateFunctionConfiguration",
-          "lambda:GetFunction",
-          "lambda:InvokeFunction",
-          "lambda:AddPermission"
-        ]
-        Resource = "arn:aws:lambda:*:*:function:Gracy-Secret-Rotator"
       }
     ]
   })

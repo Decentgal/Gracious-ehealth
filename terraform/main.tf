@@ -6,13 +6,13 @@ resource "aws_vpc" "ehealth_vpc" {
   tags = { Name = "gracy-ehealth-vpc" }
 }
 
-# Resolved: Added VPC Flow Logs for network auditability
 resource "aws_flow_log" "ehealth_flow_log" {
   log_destination      = aws_s3_bucket.log_bucket.arn
   log_destination_type = "s3"
   vpc_id               = aws_vpc.ehealth_vpc.id
   traffic_type         = "ALL"
 }
+
 
 
 resource "aws_default_security_group" "default" {
@@ -62,7 +62,6 @@ resource "aws_kms_key" "gracy_key" {
   enable_key_rotation     = true
   rotation_period_in_days = 90
 
-  # Resolved: Fixed CKV2_AWS_64 with a valid Key Policy
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
@@ -79,13 +78,13 @@ resource "aws_kms_key" "gracy_key" {
 }
 
 resource "aws_secretsmanager_secret" "gracy_db_secret" {
-  name                    = "Gracy-App-Secrets-v9"
+  name                    = "Gracy-App-Secrets-v10"
   description             = "Production credentials for e-health Application"
   kms_key_id              = aws_kms_key.gracy_key.arn
   recovery_window_in_days = 30
 }
 
-# --- 3. S3 LOGGING INFRASTRUCTURE ---
+# --- 3. S3 LOGGING INFRASTRUCTURE (Hardened) ---
 resource "random_id" "bucket_suffix" {
   byte_length = 4
 }
@@ -93,6 +92,44 @@ resource "random_id" "bucket_suffix" {
 resource "aws_s3_bucket" "log_bucket" {
   bucket        = "gracy-ehealth-logs-${random_id.bucket_suffix.hex}"
   force_destroy = true
+  
+  # Suppressing recursive logging on the logging bucket itself
+  # checkov:skip=CKV_AWS_18: "Logging bucket does not require self-logging"
+  # checkov:skip=CKV_AWS_144: "Cross-region replication not required for demo"
+}
+
+# Fixed CKV_AWS_21: Enable Versioning
+resource "aws_s3_bucket_versioning" "log_versioning" {
+  bucket = aws_s3_bucket.log_bucket.id
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
+# Fixed CKV_AWS_145: Encrypt with KMS by default
+resource "aws_s3_bucket_server_side_encryption_configuration" "log_enc" {
+  bucket = aws_s3_bucket.log_bucket.id
+  rule {
+    apply_server_side_encryption_by_default {
+      kms_master_key_id = aws_kms_key.gracy_key.arn
+      sse_algorithm     = "aws:kms"
+    }
+  }
+}
+
+# Fixed CKV2_AWS_61: Lifecycle Configuration
+resource "aws_s3_bucket_lifecycle_configuration" "log_lifecycle" {
+  bucket = aws_s3_bucket.log_bucket.id
+  rule {
+    id     = "log_retention"
+    status = "Enabled"
+    
+    filter {} # This resolves the "No attribute specified" warning
+
+    expiration {
+      days = 90
+    }
+  }
 }
 
 resource "aws_s3_bucket_public_access_block" "log_bucket_block" {
@@ -197,7 +234,7 @@ resource "aws_lb_listener" "http" {
   # checkov:skip=CKV_AWS_103: "TLS 1.2 skipped for HTTP"
 }
 
-# --- 5. AUTOMATED SECRET ROTATION ---
+# --- 5. AUTOMATED SECRET ROTATION (Hardened Lambda) ---
 resource "aws_iam_role" "lambda_rotator_role" {
   name = "Gracy-Secret-Rotator-Role"
 
@@ -211,15 +248,37 @@ resource "aws_iam_role" "lambda_rotator_role" {
   })
 }
 
-# checkov:skip=CKV_AWS_116: "DLQ skipped for rotation for this project"
+# DLQ for Lambda Reliability (Fixed CKV_AWS_116)
+resource "aws_sqs_queue" "lambda_dlq" {
+  name              = "gracy-lambda-dlq"
+  kms_master_key_id = aws_kms_key.gracy_key.id
+}
+
 resource "aws_lambda_function" "rotator" {
   filename      = "lambda_function_payload.zip" 
   function_name = "Gracy-Secret-Rotator"
   role          = aws_iam_role.lambda_rotator_role.arn
   handler       = "index.handler"
   runtime       = "python3.11"
+  
+  # Fixed CKV_AWS_115: Concurrency Limit
+  reserved_concurrent_executions = 2
+  
+  # Fixed CKV_AWS_50: X-Ray Tracing
+  tracing_config {
+    mode = "Active"
+  }
+
+  # Fixed CKV_AWS_116: Dead Letter Queue
+  dead_letter_config {
+    target_arn = aws_sqs_queue.lambda_dlq.arn
+  }
+
   # checkov:skip=CKV_AWS_117: "VPC config skipped for secret rotation"
+  # checkov:skip=CKV_AWS_272: "Code signing skipped for project demo"
 }
+
+
 
 resource "aws_secretsmanager_secret_rotation" "rotation" {
   secret_id           = aws_secretsmanager_secret.gracy_db_secret.id
@@ -285,4 +344,9 @@ resource "aws_wafv2_web_acl" "ehealth_waf" {
     sampled_requests_enabled   = true
   }
   # checkov:skip=CKV2_AWS_31: "WAF Logging requires Kinesis/S3"
+}
+
+resource "aws_wafv2_web_acl_association" "waf_alb_assoc" {
+  resource_arn = aws_lb.ehealth_alb.arn
+  web_acl_arn  = aws_wafv2_web_acl.ehealth_waf.arn
 }
