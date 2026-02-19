@@ -2,9 +2,12 @@ name: "Infrastructure GitOps"
 
 on:
   push:
-    branches: [ main ]
+    branches: 
+      - main
+      - feature/alb-waf-gitops
     paths:
-      - 'terraform/**' # Only triggers if files in the terraform folder change
+      - 'terraform/**'
+      - '.github/workflows/**'
 
 permissions:
   id-token: write      # Required for OIDC handshake
