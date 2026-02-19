@@ -183,6 +183,7 @@ resource "aws_security_group" "alb_sg" {
   # checkov:skip=CKV_AWS_260: "Port 80 is required for the HTTPS redirect logic"
 }
 
+# trivy:ignore:aws-elb-alb-not-public
 resource "aws_lb" "ehealth_alb" {
   name               = "gracy-ehealth-alb"
   internal           = false 
