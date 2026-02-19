@@ -4,10 +4,10 @@ on:
   push:
     branches: 
       - main
-      - feature/alb-waf-gitops
+
     paths:
       - 'terraform/**'
-      - '.github/workflows/**'
+
 
 permissions:
   id-token: write      # Required for OIDC handshake
@@ -28,6 +28,8 @@ jobs:
           directory: terraform/
           framework: terraform
           soft_fail: false 
+          output_format: sarif
+          output_file_paths: results_sarif
 
       # 2. AWS AUTHENTICATION
       - name: Configure AWS Credentials
@@ -61,8 +63,8 @@ jobs:
         if: always()
         run: |
           echo "Reclaiming workspace from root-owned scanner outputs..."
-          sudo chown -R $USER:$USER $(pwd)
-          sudo chmod -R 777 $(pwd)
+          sudo chown -R $USER:$USER .
+
 
       # 6. DYNAMIC ANALYSIS (OWASP ZAP)
       - name: Start Container for DAST
