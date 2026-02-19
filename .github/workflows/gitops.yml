@@ -34,3 +34,8 @@ jobs:
 
       - name: Terraform Apply
         run: cd terraform && terraform apply -auto-approve
+
+# ZAP Workspace Permissions
+      - name: Fix Workspace Permissions
+        if: always() # Run even if terraform steps fail
+        run: sudo chmod -R 777 $(pwd)
