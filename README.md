@@ -1,4 +1,4 @@
-**AN e-HEALTH CI/CD PIPELINE COMPLIANT TO HIPAA, GDPR, OWASP Top 10, ISO 27001 & NIST standards.**
+**A HEALTHCARE SYSTEM COMPLIANT WITH HIPAA, GDPR, OWASP Top 10, ISO 27001 & NIST standards.**
 
 This repository implements a zero-trust architecture with a security-first CI/CD pipeline for a Python-based eHealth application. The pipeline is designed to protect patient data by enforcing security controls at build time and runtime using DevSecOps tools. Every code push is automatically scanned, tested, and validated before being approved for deployment to Production.
 
@@ -9,7 +9,8 @@ The application is a world-class secure healthcare environment with a focus on Z
 
 This application is a lightweight Flask API that exposes a health status endpoint while enforcing strong HTTP security headers to mitigate common web vulnerabilities.
 
-Endpoint
+
+**Endpoint**
 
 GET /
 
@@ -71,6 +72,7 @@ Response
 
 
 
+
 **Local setup & testing**
 
 1. Clone this repo: `git clone https://github.com/Decentgal/Gracious-ehealth.git`
@@ -79,33 +81,34 @@ Response
 4. Run: `docker run -d --name ehealth-test -p 8080:5000 ehealth-app`
 
 
+
 **Project structure               and their contents**
 
-├── gracious_app.py        Flask application with security headers
+├── gracious_app.py        : (Flask application with security headers)
 
-├── gracy.txt              Dependency pinning & security fixes
+├── gracy.txt              : (Dependency pinning & security fixes)
 
-├──terraform/              IaC
+├──terraform/              : (IaC)
 
-|   └── iam.tf             Defines IAM resources (role & policy)
+|   └── iam.tf             : (Defines IAM resources like role & policy)
 
-|   └── oidc.tf            Defines the GitHub OIDC trust setup
+|   └── oidc.tf            : (Defines the GitHub OIDC trust setup)
 
-|   └── provider.tf        Defines how Terraform connects to AWS
+|   └── provider.tf        : (Defines how Terraform connects to AWS)
 
-|   └── main.tf            Core infrastructure resources (KMS, Secrets Manager)
+|   └── main.tf            : (Core infrastructure resources like KMS, Lambda Function, Secrets Manager, etc.)
 
-├── Dockerfile             Multi-stage hardened container build
+├── Dockerfile             : (Multi-stage hardened container build)
 
 ├── .github/workflows/
 
-│   └── deploy.yml         CI/CD security pipeline
+│   └── deploy.yml         : (CI/CD security pipeline)
 
-│   └── gitops.yml         GitOps pipeline
+│   └── gitops.yml         : (GitOps automation)
 
-├── .gitignore             Credentials
+├── .gitignore             : (Credentials)
 
-├── README.md              Technical documentation
+├── README.md              : (Technical documentation)
 
 
 
@@ -126,9 +129,11 @@ Response
 
 2. **Dependency security**: Dependencies are explicitly pinned in gracy.txt to prevent:
 
+
 - Dependency confusion attacks
 - Introduction of known vulnerable versions
 - Additional packages are included to address Trivy-detected security issues
+
 
 
 3. **Hardened Container Image:** This application uses a multi-stage Docker build
@@ -167,11 +172,12 @@ Deployment Approval
 
 
 
-6. **Infrastructure-as-Code scanning:** The tool used here is **Checkov* and it scans and audits my high-availability:
+6. **Infrastructure-as-Code scanning:** The tool used here is **Checkov* and it scans and audits a highly-availabile:
 
 - VPC configurations are audited for security best practices before the application tests begin.
 - Application Load Balancer (ALB) configurations for security best practices before the application tests begin.
 - Web Application Firewall (WAF) configurations for security best practices before the application tests begin.
+
 
 
 7. **Static Application Security Testing (SAST):** The tool used here is **Trivy* and it scans:
@@ -179,6 +185,7 @@ Deployment Approval
 - Scans Dockerfile configurations
 - Scans OS packages and Python dependencies
 - Blocks builds on CRITICAL and HIGH vulnerabilities
+
 
 
 8. **Dynamic Application Security Testing (DAST):** The tool I used here is OWASP ZAP for baseline scan. It does the following:
@@ -193,27 +200,17 @@ Deployment Approval
 **JSON*
 
 
+
 9. **Prerequisites you need to run locally:**
 
+- AWS CLI
 - Python 3.13.12
 - Docker
 - Git
 - Terraform
 - Trivy (optional for local scans)
 
-**You can run this application locally without Docker*
-- pip install -r gracy.txt
-- python gracious_app.py
-
-**On your browser, visit: 'http://localhost:5000' OR 'http://127.0.0.0:5000'
-
-**You can build and run with Docker:*
-- docker build -t ehealth-app .
-- docker run -p 5000:5000 ehealth-app
-
-
-**You can also run Trivy locally (optional)**
-trivy image ehealth-app
+**On your browser, visit: 'http://localhost:5000' OR 'http://127.0.0.0:5000' OR "copy and paste the DNS of your ALB"
 
 
 
@@ -223,6 +220,8 @@ trivy image ehealth-app
 - Passes Trivy image vulnerability scans
 - Successfully runs OWASP ZAP security tests is allowed to proceed toward deployment.
 
+
+**SUMMARY**
 
 This application is 100% reproducible by anyone. It is hosted on AWS within a hardened VPC featuring public/private subnets, an Application Load Balancer (ALB), and a WAFv2 protected by AWS Managed Rule Sets to block SQLi and XSS attacks. Security is integrated at every stage of the CI/CD lifecycle: Checkov scans the IaC for misconfigurations, Trivy performs SAST on Docker images, and OWASP ZAP executes DAST on the running container.
 
