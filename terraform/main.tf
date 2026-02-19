@@ -6,6 +6,7 @@ resource "aws_vpc" "ehealth_vpc" {
   tags = { Name = "gracy-ehealth-vpc" }
 }
 
+# Resolved: Fixed "Network Blindness" with Flow Logs
 resource "aws_flow_log" "ehealth_flow_log" {
   log_destination      = aws_s3_bucket.log_bucket.arn
   log_destination_type = "s3"
@@ -13,8 +14,11 @@ resource "aws_flow_log" "ehealth_flow_log" {
   traffic_type         = "ALL"
 }
 
+
+
 resource "aws_default_security_group" "default" {
   vpc_id = aws_vpc.ehealth_vpc.id
+  # Leaving ingress/egress empty blocks all traffic by default (CKV2_AWS_12)
 }
 
 resource "aws_subnet" "public_a" {
@@ -91,7 +95,7 @@ resource "aws_s3_bucket" "log_bucket" {
   bucket        = "gracy-ehealth-logs-${random_id.bucket_suffix.hex}"
   force_destroy = true
   
-  # Final Suppressions for S3 Compliance
+  # Final Checkov Suppressions for S3 Compliance
   # checkov:skip=CKV_AWS_18: "Logging bucket does not require self-logging"
   # checkov:skip=CKV_AWS_144: "Cross-region replication not required for demo"
   # checkov:skip=CKV_AWS_145: "SSE-S3 encryption is sufficient for logs"
