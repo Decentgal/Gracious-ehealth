@@ -1,8 +1,7 @@
-# Establish Trust with GitHub (No more static access keys, this is 2026 best practice)
+# Establish Trust with GitHub
 resource "aws_iam_openid_connect_provider" "github" {
   url             = "https://token.actions.githubusercontent.com"
   client_id_list  = ["sts.amazonaws.com"]
-  # Empty list allowed on your modern Terraform version
   thumbprint_list = [] 
 }
 
@@ -21,7 +20,6 @@ resource "aws_iam_role" "github_oidc_role" {
         }
         Condition = {
           StringLike = {
-            # Verified for username: Decentgal
             "token.actions.githubusercontent.com:sub" = "repo:Decentgal/Gracious-ehealth:*"
           }
         }
@@ -30,10 +28,10 @@ resource "aws_iam_role" "github_oidc_role" {
   })
 }
 
-# Attach Permissions
-resource "aws_iam_role_policy_attachment" "admin_attach" {
+# Attach Scoped Runtime Permissions (Fixed CKV_AWS_274)
+resource "aws_iam_role_policy_attachment" "oidc_attach" {
   role       = aws_iam_role.github_oidc_role.name
-  policy_arn = "arn:aws:iam::aws:policy/AdministratorAccess"
+  policy_arn = aws_iam_policy.app_runtime_policy.arn
 }
 
 output "oidc_role_arn" {
